@@ -37,15 +37,17 @@ def args():
     parser.add_argument('--timelen', type=int, default=256)
     parser.add_argument('--time_scale', type=float, default=1)
 
-    # ---- for GREC
+    # ---- for masking
     parser.add_argument('--masklen', type=int, default=6)
+
+    # ---- for GREC
     parser.add_argument('--filter_width', type=int, default=3)
     parser.add_argument('--dilations', type=str, default="1,2,2,4")
 
     # ---- for TimelyREC
     parser.add_argument('--window_ratio', type=float, default=0.2)
 
-    # ---- for CTSMA/GraphELIP
+    # ---- for CTSMA/EasyDGL
     parser.add_argument('--mark', type=str, help="mark data file")
     parser.add_argument('--ct_reg', type=float, default=0.)
 

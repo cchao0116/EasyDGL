@@ -111,7 +111,7 @@ def reader(FLAGS, file_pattern, is_training: bool):
         return D.InputReader(file_pattern, is_training=is_training,
                              decoder=D.TfExampleDecoder(FLAGS.seqslen + 1, has_datetime=False),
                              processor=D.RegressivePostProcessor(is_training, has_datetime=False, keep_entire=True))
-    elif FLAGS.model == 'GraphELIP':
+    elif FLAGS.model == 'EasyDGL':
         seqslen = FLAGS.seqslen + 1
         mask = FLAGS.num_items
         return D.InputReader(file_pattern, is_training=is_training,
