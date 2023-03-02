@@ -59,9 +59,9 @@ def ranking(FLAGS):
     elif FLAGS.model == "TiSASREC":
         from model import TiSASRec
         return TiSASRec(FLAGS.num_items, FLAGS)
-    elif FLAGS.model == "TGAN":
-        from model import TGAN
-        return TGAN(FLAGS.num_items, FLAGS)
+    elif FLAGS.model == "TGAT":
+        from model import TGAT
+        return TGAT(FLAGS.num_items, FLAGS)
     elif FLAGS.model == "S2PNM":
         from model import S2PNM
         return S2PNM(FLAGS.num_items, FLAGS)
@@ -83,9 +83,9 @@ def ranking(FLAGS):
     elif FLAGS.model == "CTSMA":
         from model import CTSMA
         return CTSMA(FLAGS.num_items, FLAGS)
-    elif FLAGS.model == "GraphELIP":
-        from model import GraphELIP
-        return GraphELIP(FLAGS.num_items, FLAGS)
+    elif FLAGS.model == "EasyDGL":
+        from model import EasyDGL
+        return EasyDGL(FLAGS.num_items, FLAGS)
     else:
         raise NotImplementedError("The ranking model: {0} not implemented".format(FLAGS.model))
 

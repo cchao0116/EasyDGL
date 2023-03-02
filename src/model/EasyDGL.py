@@ -32,7 +32,7 @@ def gelu(input_tensor):
     return input_tensor * cdf
 
 
-class GraphELIP(Sequential):
+class EasyDGL(Sequential):
 
     def __init__(self, num_items, FLAGS):
         super().__init__(num_items, FLAGS)
