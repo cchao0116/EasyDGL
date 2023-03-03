@@ -19,6 +19,7 @@ class TGAT(Sequential):
 
     def __init__(self, num_items, FLAGS):
         super().__init__(num_items, FLAGS)
+        self.time_scale = FLAGS.time_scale
 
         with tf.variable_scope("TGAT"):
             self.item_embs = C.Embedding(num_items, self.num_units, self.l2_reg,
@@ -42,7 +43,7 @@ class TGAT(Sequential):
 
     def __call__(self, features, is_training):
         seqs_id = features['seqs_i']
-        seqs_ts = features['seqs_t']
+        seqs_ts = features['seqs_t'] / self.time_scale
 
         # Embedding and Transform
         seqs_units = self.item_embs(seqs_id)

@@ -24,6 +24,7 @@ class CTSMA(Sequential):
         self.mark_lookup_table = pickle.load(open(FLAGS.mark, 'rb')).toarray()
         self.num_events = self.mark_lookup_table.shape[-1]
         self.ct_reg = FLAGS.ct_reg
+        self.time_scale = FLAGS.time_scale
 
         with tf.variable_scope("CSTMA"):
             self.item_embs = C.Embedding(num_items, self.num_units, self.l2_reg,
@@ -44,7 +45,7 @@ class CTSMA(Sequential):
 
     def __call__(self, features, is_training):
         seqs_id = features['seqs_i']
-        seqs_ts = features['seqs_t']
+        seqs_ts = features['seqs_t'] / self.time_scale
         seqs_spans = seqs_ts[:, 1:] - seqs_ts[:, :-1]
 
         # positional encoding
