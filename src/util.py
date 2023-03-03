@@ -46,7 +46,7 @@ class EarlyStopping(object):
 
     def save_ckpt(self, sess):
         if sess is not None:
-            self.saver.save(sess, "ckpt/m")
+            self.saver.save(sess, f"ckpt/{self.model}")
 
     def summary(self):
         logging.info("SUMMARY: %s" % ({k: "{0:.5f}".format(v) for k, v in self.res.items()}))
