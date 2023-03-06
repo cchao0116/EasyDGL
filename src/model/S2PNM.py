@@ -7,7 +7,7 @@ import tensorflow.compat.v1 as tf
 
 import module.sequential as S
 from model.Base import Sequential, FeedForward, layernorm
-from model.compat import cudnn_rnn
+from model.compat import cudnn_rnn, extender
 from module.coding import Embedding, PositionCoding
 
 
@@ -84,7 +84,7 @@ class S2PNM(Sequential):
         #     decay_steps=1000, decay_rate=0.9, staircase=True)
         # optimizer = tf.train.AdamOptimizer(learning_rate=lrate, beta2=0.98, epsilon=1e-9)
         optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate, beta2=0.98, epsilon=1e-9)
-        # optimizer = tf.contrib.estimator.clip_gradients_by_norm(optimizer, clip_norm=5.)
+        optimizer = extender.clip_gradients_by_norm(optimizer, clip_norm=5.)
         with tf.control_dependencies([add_gstep]):
             train_op = optimizer.minimize(loss)
         return train_op
