@@ -18,30 +18,35 @@ class EarlyStopping(object):
 
         self.counter = 0
         self.res = None
+        self.best_valid = None
         self.best_acc = None
         self.best_loss = None
         self.early_stop = False
 
         self.saver = tf.train.Saver(max_to_keep=1)
 
-    def step(self, loss, acc, res: dict, sess=None):
+    def step(self, loss, acc, valid: dict, test: dict, sess=None):
         if np.isnan(loss):
             self.early_stop = True
         elif self.best_loss is None:
             self.best_acc = acc
             self.best_loss = loss
-            self.res = res
-        elif acc < self.best_acc:  # count the best acc is not achieved
+            self.best_valid = valid
+            self.res = test
+        elif acc < self.best_acc:  # count if better acc is not achieved
             self.counter += 1
             logging.info(f'EarlyStopping {self.model} counter: {self.counter} out of {self.patience}')
             if self.counter >= self.patience:
                 self.early_stop = True
         else:
-            self.best_loss = np.min((loss, self.best_loss))
-            self.best_acc = np.max((acc, self.best_acc))
+            self.best_loss = min(loss, self.best_loss)
+            self.best_acc = max(acc, self.best_acc)
+            for k, v in self.res.items():
+                if self.best_valid[k] <= valid[k]:
+                    self.res[k] = test[k]
             self.counter = 0
             self.save_ckpt(sess)
-            self.res = {k: max(self.res[k], res[k]) for k, v in res.items()}
+
         return self.early_stop
 
     def save_ckpt(self, sess):

@@ -22,7 +22,9 @@ tf.disable_v2_behavior()
 def args():
     parser = argparse.ArgumentParser(description='Continuous-Time Self-Modulating Attention (CTSMA)')
     parser.add_argument('--train', action="store", required=True,
-                        help="training data file patterns", )
+                        help="training data file patterns")
+    parser.add_argument('--valid', action="store", required=True,
+                        help="validation data file patterns")
     parser.add_argument('--test', action="store", required=True,
                         help="test data file patterns")
     parser.add_argument('--model', action="store", required=True,
@@ -74,6 +76,9 @@ def main():
         tr_reader = reader(FLAGS, FLAGS.train, is_training=True)
         tr_data = tr_reader(FLAGS.batch_size).make_initializable_iterator()
 
+        vl_reader = reader(FLAGS, FLAGS.valid, is_training=True)
+        vl_data = vl_reader(FLAGS.batch_size).make_initializable_iterator()
+
         te_reader = reader(FLAGS, FLAGS.test, is_training=False)
         te_data = te_reader(FLAGS.batch_size).make_initializable_iterator()
 
@@ -86,8 +91,13 @@ def main():
         # reuse variables for the next tower.
         tf.get_variable_scope().reuse_variables()
 
+        # used for validation
         features, labels = te_data.get_next()
-        metrics_op, metric_init_op = m.eval(features, labels, mask_seen=FLAGS.mask_seen)
+        vl_metrics_op, vl_metric_init_op = m.eval(features, labels, mask_seen=FLAGS.mask_seen)
+
+        # used for testing
+        features, labels = te_data.get_next()
+        te_metrics_op, te_metric_init_op = m.eval(features, labels, mask_seen=FLAGS.mask_seen)
 
     logging.info("3. train and evaluate model")
     stopper = EarlyStopping(FLAGS)
@@ -108,15 +118,26 @@ def main():
                 except tf.errors.OutOfRangeError:
                     logging.info("%03d: Loss=%.4f" % (epoch, running_loss))
 
-            sess.run([metric_init_op, te_data.initializer])
+            # Validation: calculate the ranking metrics
+            sess.run([vl_metric_init_op, vl_data.initializer])
             with tqdm.tqdm(itertools.count(), ascii=True) as tq:
                 try:
                     for _ in tq:
-                        metrics = sess.run(metrics_op)
+                        vl_metrics = sess.run(vl_metrics_op)
                 except tf.errors.OutOfRangeError:
-                    logging.info("%03d: %s" % (epoch, {k: "{0:.5f}".format(v) for k, v in metrics.items()}))
+                    pass
+                    # logging.info("%03d: %s" % (epoch, {k: "{0:.5f}".format(v) for k, v in vl_metrics.items()}))
 
-            stopper.step(running_loss, metrics['H10'], metrics, sess)  # focused on HR[changable]
+            # Testing: calculate the ranking metrics
+            sess.run([te_metric_init_op, te_data.initializer])
+            with tqdm.tqdm(itertools.count(), ascii=True) as tq:
+                try:
+                    for _ in tq:
+                        te_metrics = sess.run(te_metrics_op)
+                except tf.errors.OutOfRangeError:
+                    logging.info("%03d: %s" % (epoch, {k: "{0:.5f}".format(v) for k, v in te_metrics.items()}))
+
+            stopper.step(running_loss, metrics['H10'], vl_metrics, te_metrics, sess)  # focused on HR[changable]
             # stopping when no performance gain is achieved
             if stopper.early_stop:
                 break
