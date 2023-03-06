@@ -7,6 +7,7 @@ import tensorflow.compat.v1 as tf
 
 import module.sequential as S
 from model.Base import Sequential, FeedForward, layernorm
+from model.compat import cudnn_rnn
 from module.coding import Embedding, PositionCoding
 
 
@@ -25,7 +26,7 @@ class S2PNM(Sequential):
                                        zero_pad=True, scale=True, scope="item_embs")
             self.pcoding = PositionCoding(self.seqslen, self.num_units, self.l2_reg, scope="spatial_embs")
 
-            self._cudnn_rnn = tf.contrib.cudnn_rnn.CudnnGRU(
+            self._cudnn_rnn = cudnn_rnn.CudnnGRU(
                 num_layers=1, num_units=self.num_units, direction='unidirectional',
                 kernel_initializer=tf.orthogonal_initializer(), name='S2PNM/GRU')
 

@@ -7,6 +7,7 @@ import tensorflow.compat.v1 as tf
 
 import module.coding as C
 from model.Base import Sequential
+from model.compat import cudnn_rnn
 
 
 class GRU4REC(Sequential):
@@ -23,7 +24,7 @@ class GRU4REC(Sequential):
             self.item_embs = C.Embedding(self.num_items, self.num_units, self.l2_reg,
                                          zero_pad=True, scale=True, scope="item_embs")
 
-            self._cudnn_rnn = tf.contrib.cudnn_rnn.CudnnGRU(
+            self._cudnn_rnn = cudnn_rnn.CudnnGRU(
                 num_layers=FLAGS.num_blocks, num_units=self.num_units, direction='unidirectional',
                 kernel_initializer=tf.orthogonal_initializer(), name='GRU4REC/GRU')
 
