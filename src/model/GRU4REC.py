@@ -7,7 +7,7 @@ import tensorflow.compat.v1 as tf
 
 import module.coding as C
 from model.Base import Sequential
-from model.compat import cudnn_rnn
+from model.compat import cudnn_rnn, extender
 
 
 class GRU4REC(Sequential):

@@ -93,8 +93,7 @@ class TiMultiHeadAttention(object):
             # Weighted sum
             outputs_value = tf.matmul(outputs, V_)  # ( h*N, T_q, C/h)
             outputs_value_p = tf.matmul(outputs, V_embs_p)
-            outputs_value_t = tf.reshape(tf.matmul(tf.expand_dims(outputs, axis=2), V_embs_t),
-                                         [tf.shape(outputs_p)[0], tf.shape(outputs_p)[1], num_units])
+            outputs_value_t = tf.squeeze(tf.matmul(tf.expand_dims(outputs, axis=2), V_embs_t), axis=2)
             outputs = outputs_value + outputs_value_p + outputs_value_t
 
             # Restore shape

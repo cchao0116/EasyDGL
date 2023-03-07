@@ -153,6 +153,13 @@ if __name__ == "__main__":
     random.seed(SEED)
     os.environ['PYTHONHASHSEED'] = str(SEED)
 
+    os.environ['TF_DETERMINISTIC_OPS'] = str(1)
+    os.environ['TF_CUDNN_DETERMINISTIC'] = str(1)
+    os.environ['HOROVOD_FUSION_THRESHOLD'] = str(0)
+
+    tf.config.threading.set_intra_op_parallelism_threads(1)
+    tf.config.threading.set_inter_op_parallelism_threads(1)
+
     FLAGS = args()
     logging.info("================")
     logging.info(vars(FLAGS))
