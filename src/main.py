@@ -36,7 +36,8 @@ def args():
     parser.add_argument('--num_heads', type=int, default=1)
     parser.add_argument('--num_blocks', type=int, default=3)
     parser.add_argument('--seqslen', type=int, default=30)
-    parser.add_argument('--timelen', type=int, default=256)
+
+    # ---- for unit to scale down the timestamps
     parser.add_argument('--time_scale', type=float, default=1)
 
     # ---- for masking
@@ -45,6 +46,9 @@ def args():
     # ---- for GREC
     parser.add_argument('--filter_width', type=int, default=3)
     parser.add_argument('--dilations', type=str, default="1,2,2,4")
+
+    # ---- for TiSASREC, discrete time encoding
+    parser.add_argument('--timelen', type=int, default=256)
 
     # ---- for TimelyREC
     parser.add_argument('--window_ratio', type=float, default=0.2)
@@ -137,7 +141,7 @@ def main():
                 except tf.errors.OutOfRangeError:
                     logging.info("%03d: %s" % (epoch, {k: "{0:.5f}".format(v) for k, v in te_metrics.items()}))
 
-            stopper.step(running_loss, te_metrics['H10'], vl_metrics, te_metrics, sess)  # focused on HR[changable]
+            stopper.step(running_loss, vl_metrics['H10'], vl_metrics, te_metrics, sess)  # focused on HR[changable]
             # stopping when no performance gain is achieved
             if stopper.early_stop:
                 break

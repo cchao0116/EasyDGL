@@ -20,6 +20,7 @@ class TimelyREC(Sequential):
     def __init__(self, num_items, FLAGS):
         super().__init__(num_items, FLAGS)
         self.window_ratio = FLAGS.window_ratio
+        self.time_scale = FLAGS.time_scale
 
         with tf.variable_scope("TimelyREC"):
             self.item_embs = C.Embedding(num_items, self.num_units, self.l2_reg,
@@ -137,7 +138,7 @@ class TimelyREC(Sequential):
             # Run TAHE
             seqs_inputs = self.item_embs(features['seqs_i'])
             # time encoding, linearly combined with historical item embeddings
-            seqs_tcodes = self.tcoding.code(features['seqs_t'])
+            seqs_tcodes = self.tcoding.code(features['seqs_t'][:, :-1] / self.time_scale )
             seqs_inputs = seqs_inputs + self.te_weight * seqs_tcodes
 
             # apply key masks to sequence embeddings, so that key masking is omit in TAHE
