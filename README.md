@@ -1,13 +1,17 @@
 <h1 align="center"><b>EasyDGL</b></h1>
 <p align="center">
+    <a href="https://arxiv.org/abs/2303.12341" target="_blank"><img src="http://img.shields.io/badge/cs.LG-arXiv%3A2303.12341-B31B1B.svg" /></a>
     <a href="https://proceedings.mlr.press/v139/chen21h.html"> <img alt="License" src="https://img.shields.io/static/v1?label=Pub&message=ICML%2721&color=blue"></a>
     <a href="https://github.com/cchao0116/EasyDGL/blob/main/LICENSE"> <img alt="License" src="https://img.shields.io/github/license/cchao0116/EasyDGL?color=green"></a>
     <a href="https://github.com/cchao0116/EasyDGL/stargazers"><img src="https://img.shields.io/github/stars/cchao0116/EasyDGL?color=yellow&label=Star" alt="Stars"></a>
 </p>
 
-[//]: # (## EasyDGL: Encode, Train and Interpret for Continuous-time Dynamic Graph Learning)
+The official implementation for
+["EasyDGL: Encode, Train and Interpret for Continuous-time Dynamic Graph Learning"](https://arxiv.org/abs/2303.12341).
 
-Official implementation for "EasyDGL: Encode, Train and Interpret for Continuous-time Dynamic Graph Learning".
+<div align=center>
+    <img src="docs/overview.png"/>
+</div>
 
 ## What's news
 
@@ -97,5 +101,12 @@ If you find our codes useful, please consider citing our work
   pages={1606--1616},
   year={2021},
   organization={PMLR}
+}
+
+@article{chen2023easydgl,
+  title={EasyDGL: Encode, Train and Interpret for Continuous-time Dynamic Graph Learning},
+  author={Chen, Chao and Geng, Haoyu and Yang, Nianzu and Yang, Xiaokang and Yan, Junchi},
+  journal={arXiv preprint arXiv:2303.12341},
+  year={2023}
 }
 ```
