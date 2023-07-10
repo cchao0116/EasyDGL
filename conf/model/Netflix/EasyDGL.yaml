@@ -1,0 +1,31 @@
+seqs_len: 31
+ckpt_dir: ckpt/EasyDGL
+data:
+  fpath: data/Netflix/
+  ftrain: data/Netflix/train.csv
+  fval_tr: data/Netflix/validation_tr.csv
+  fval_te: data/Netflix/validation_te.csv
+  ftest_tr: data/Netflix/test_tr.csv
+  ftest_te: data/Netflix/test_te.csv
+  batch_size: 512
+  time_scalor: 86400.
+  mask_rate: 0.2
+  mask_len: 6
+  mask_const: 17771
+model:
+  n_classes: 17771
+  num_blocks: 1
+  num_units: 512
+  num_heads: 8
+  msg_drop: 0.
+  att_drop: 0.
+  fmark: data/Netflix/mark.npy
+train:
+  optimizer: adam
+  lr: 0.0005
+  lr_decay_ratio: 0.998
+  weight_decay: 0.0001
+  epochs: 100
+  patience: 10
+  max_grad_norm: 5
+  test_every_n_epochs: 5
