@@ -15,7 +15,7 @@ The official implementation for
 
 ## What's news
 
-[2023.06.30] We will release the Pytorch-DGL version with ten more dynamic graph models.
+[2023.07.10] We release the early version of Pytorch-DGL codes at [pre-branch](https://github.com/cchao0116/EasyDGL/tree/pre).
 
 [2023.03.16] We release the TensorFlow version of our codes for link prediction.
 
