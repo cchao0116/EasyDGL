@@ -7,6 +7,8 @@ import logging
 import math
 import pickle
 
+import dgl.function as fn
+import dgl.nn.pytorch as dglnn
 import torch as th
 import torch.nn as nn
 
@@ -15,20 +17,31 @@ from model.util import PositionCoding, TimeSinusoidCoding, batch_gather
 
 class EasyDGLConfig(object):
     def __init__(self, yaml_config):
-        self.seqs_len = yaml_config.get('seqs_len')
-        self.mask_const = yaml_config['data']['mask_const']
-        self.mask_len = yaml_config['data']['mask_len']
-        self.time_scalor = yaml_config['data']['time_scalor']
+        # for personalized recommendation
+        data_config = yaml_config['data']
+        self.seqs_len = yaml_config.get('seqs_len', 31)
+        self.mask_const = data_config.get('mask_const', -1)
+        self.mask_len = data_config.get('mask_len', 6)
+        self.mask_rate = data_config.get('mask_rate', 0.)
+        self.mask_max = data_config.get('mask_max', -1)
+        self.time_scalor = data_config.get('time_scalor', 1)
+
+        # for traffic flow forecasting
+        self.num_nodes = data_config.get('num_nodes')
+        self.num_features = data_config.get('num_features', 2)
+        self.num_timesteps_in = data_config.get('num_timesteps_in', 12)
+        self.num_timesteps_out = data_config.get('num_timesteps_out', 12)
 
         model_config = yaml_config['model']
         self.n_classes = model_config.get('n_classes')
         self.num_blocks = model_config.get('num_blocks')
         self.num_units = model_config.get('num_units')
         self.num_heads = model_config.get('num_heads')
-        self.msg_drop = model_config.get('msg_drop')
-        self.att_drop = model_config.get('att_drop')
+        self.feat_drop = model_config.get('feat_drop', 0.)
+        self.msg_drop = model_config.get('msg_drop', 0.)
+        self.att_drop = model_config.get('att_drop', 0.)
 
-        self.mark_lookup = pickle.load(open(model_config['fmark'], 'rb')).toarray()
+        self.mark_lookup = pickle.load(open(model_config['fmark'], 'rb'))
         self.num_marks = self.mark_lookup.shape[1]
 
         logging.info(f"======EasyDGL configure======")
@@ -193,13 +206,13 @@ class CTSMATransformer(nn.Module):
         return outs, all_mark_inty
 
 
-class Recommener(nn.Module):
+class Recommender(nn.Module):
     """
         for personalized recommendation
     """
 
     def __init__(self, config: EasyDGLConfig):
-        super(Recommener, self).__init__()
+        super(Recommender, self).__init__()
         self.mask_const = config.mask_const
         self.mask_len = config.mask_len
         self.seqs_len = config.seqs_len
@@ -305,3 +318,357 @@ class Recommener(nn.Module):
         cnt = th.sum(th.sign(label)) + 1e-5
         loss = nll / cnt
         return loss
+
+
+class DGLAIAConv(nn.Module):
+    def __init__(self, in_feats, out_feats, num_heads,
+                 num_marks, feat_drop=0., att_drop=0., residual=True):
+        super(DGLAIAConv, self).__init__()
+        self.num_units = out_feats
+        self.num_heads = num_heads
+        self.num_marks = num_marks
+        self.residual = residual
+
+        # Query, Key, Value, Timespan transformation
+        self.fc_q = nn.Linear(in_feats, out_feats, bias=False)
+        self.fc_k = nn.Linear(in_feats, out_feats, bias=False)
+        self.fc_v = nn.Linear(in_feats, out_feats, bias=False)
+        self.fc_t = nn.Linear(in_feats, out_feats, bias=False)
+        self.fc_e = nn.Linear(1, out_feats, bias=False)
+        self.feat_drop = nn.Dropout(feat_drop)
+        self.att_drop = nn.Dropout(att_drop)
+
+        # Event transformation
+        head_feats = out_feats // num_heads
+        self.fc_i = nn.Linear(head_feats + 1, head_feats * self.num_marks)
+        self.weight_i = nn.Parameter(th.empty((num_marks, head_feats)))
+        self.scale_i = nn.Parameter(th.empty(num_marks))
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        stddev = 0.02
+        nn.init.normal_(self.fc_q.weight, 0., stddev)
+        nn.init.normal_(self.fc_k.weight, 0., stddev)
+        nn.init.normal_(self.fc_v.weight, 0., stddev)
+        nn.init.normal_(self.fc_t.weight, 0., stddev)
+        nn.init.normal_(self.fc_e.weight, 0., stddev)
+        nn.init.normal_(self.fc_i.weight, 0., stddev)
+        nn.init.kaiming_uniform_(self.weight_i, a=math.sqrt(5))
+        nn.init.zeros_(self.scale_i)
+
+    @staticmethod
+    def msg_fn_prod(edges):
+        el = edges.src['fk']
+        er = edges.dst['fq']
+
+        # optional: consider the distant between sensors
+        ef = edges.data['ef']
+
+        # shape: num_edges, batch_size * num_heads, 1
+        e = th.sum((el + ef) * er, dim=2, keepdim=True)
+        e = e / (el.shape[-1] ** 0.5)
+        return {'e': e}
+
+    def msg_fn_inty(self, edges):
+        # fi: num_edges, num_heads * batch_size, num_marks
+        # fm: num_edges, 1, num_marks
+        # => num_edges, num_heads * batch_size, 1
+        ei = th.sum(edges.src['fi'] * edges.dst['fm'], dim=2, keepdim=True)
+        # ea: num_edges, num_heads * batch_size, 1
+        ea = edges.data['ea']
+        # ee: num_edges, num_heads * batch_size, 1
+        ee = ei * ea
+        ee = self.att_drop(ee)
+        return {'ee': ee}
+
+    def intensities(self, feat, timespan):
+        num_nodes = feat.shape[0]
+
+        # Compute intermediate representations
+        # feat: num_nodes, num_heads * batch_size, head_units
+        # timespan: num_nodes, num_heads * batch_size, 1
+        timespan = timespan.tile([1, self.num_heads, 1])
+        mark_units = th.cat([feat, timespan], dim=2)
+        mark_units = self.fc_i(mark_units)
+        # => num_nodes, num_heads * batch_size, head_units * num_marks
+        mark_units = th.sigmoid(mark_units)
+        # => 1, num_nodes * num_heads * batch_size, head_units
+        mark_units = th.cat(mark_units.chunk(num_nodes, dim=0), dim=1)
+        # => num_marks, num_nodes * num_heads * batch_size, head_units
+        mark_units = th.cat(mark_units.chunk(self.num_marks, dim=2), dim=0)
+        # => num_nodes * num_heads * batch_size, num_marks, head_units
+        mark_units = mark_units.permute(1, 0, 2)
+
+        # Perform mark-wise projection and intensity
+        prefix_shape = mark_units.shape[0]
+        # => num_nodes * num_heads * batch_size, num_marks, head_units
+        weight_i = self.weight_i.unsqueeze(0).tile(prefix_shape, 1, 1)
+
+        # => num_marks
+        scale_i = th.exp(self.scale_i)
+        # =>  num_nodes * num_heads * batch_size, num_marks
+        scale_i = scale_i.unsqueeze(0).tile(prefix_shape, 1)
+
+        # => num_nodes * num_heads * batch_size, num_marks
+        mark_inty = th.sum(mark_units * weight_i, dim=2) / scale_i
+        mark_inty = scale_i * th.log(1. + th.exp(mark_inty))
+        # => num_nodes, num_heads * batch_size, num_marks
+        mark_inty = th.stack(mark_inty.chunk(num_nodes, dim=0), dim=0)
+        return mark_inty
+
+    def forward(self, graph, feat):
+        with graph.local_scope():
+            if not isinstance(feat, tuple):
+                raise RuntimeError("input should be tuples")
+
+            h_src = self.feat_drop(feat[0]['x'])
+            h_dst = self.feat_drop(feat[1]['x'])
+            timespans = feat[1]['t']
+            # event_marks: num_nodes, 1, num_marks
+            event_marks = feat[1]['m']
+
+            # Linear transform
+            # Q: num_nodes, num_heads * batch_size, head_units
+            # K, T, V: num_nodes, num_heads * batch_size, head_units
+            Q = th.cat(th.chunk(self.fc_q(h_dst), self.num_heads, dim=2), dim=1)
+            K = th.cat(th.chunk(self.fc_k(h_src), self.num_heads, dim=2), dim=1)
+            T = th.cat(th.chunk(self.fc_t(h_src), self.num_heads, dim=2), dim=1)
+            V = th.cat(th.chunk(self.fc_v(h_src), self.num_heads, dim=2), dim=1)
+
+            #
+            # Attention
+            graph.srcdata.update({'fk': K, 'ft': T})
+            graph.dstdata.update({'fq': Q})
+            # edge feature transformation: num_edges, num_heads * batch_size, head_units
+            batch_size = Q.shape[1] // self.num_heads
+            efeat = self.fc_e(graph.edata['ef']).unsqueeze(1)
+            efeat = efeat.tile((1, batch_size, 1))
+            graph.edata['ef'] = th.cat(th.chunk(efeat, self.num_heads, dim=2), dim=1)
+
+            graph.apply_edges(self.msg_fn_prod)
+            h_edge = graph.edata.pop('e')
+            # compute softmax
+            graph.edata['ea'] = dglnn.edge_softmax(graph, h_edge)
+
+            # message passing
+            graph.update_all(fn.u_mul_e('ft', 'ea', 'm'), fn.sum('m', 'h'))
+            # g_dst: num_nodes, num_heads * batch_size, head_units
+            g_dst = graph.dstdata.pop('h')
+
+            #
+            # TPPs intensity
+            # all_mark_inty: num_nodes, num_heads * batch_size, num_marks
+            all_mark_inty = self.intensities(g_dst, timespans)
+            graph.srcdata.update({'fi': all_mark_inty, 'fv': V})
+            graph.dstdata.update({'fm': event_marks})
+            # compute self-modulating probability
+            graph.apply_edges(self.msg_fn_inty)
+            # message passing
+            graph.update_all(fn.u_mul_e('fv', 'ee', 'm'),
+                             fn.sum('m', 'h'))
+            # outs: num_nodes, num_heads * batch_size, head_units
+            outs = graph.dstdata.pop('h')
+
+            # Residual connection
+            # outs: num_nodes, batch_size, num_units
+            outs = th.cat(th.chunk(outs, self.num_heads, dim=1), dim=2)
+
+            if self.residual:
+                outs += h_dst
+            return outs
+
+
+class NodeRegressor(nn.Module):
+
+    def __init__(self, config: EasyDGLConfig):
+        super(NodeRegressor, self).__init__()
+        self.num_nodes = config.num_nodes
+        self.time_scalor = config.time_scalor
+        self.num_timesteps_in = config.num_timesteps_in
+        self.num_timesteps_out = config.num_timesteps_out
+
+        self.mark_lookup = th.from_numpy(config.mark_lookup).float()
+        self.tcoding = TimeSinusoidCoding(config.num_units)
+
+        num_units = config.num_units
+        num_features = config.num_features
+        self.fc_x = nn.Linear(num_features * self.num_timesteps_in, num_units, bias=False)
+        self.embedding = nn.Parameter(th.empty(self.num_nodes, num_units))
+
+        # CaM
+        self.mask_rate = config.mask_rate
+        self.mask_embedding = nn.Embedding(config.mask_max + 1, num_units, padding_idx=0)
+        if self.mask_rate == 0.:
+            logging.warning("Masking is diabled in NodeRegressor")
+
+        # adjusted graph,
+        # note that it might be better to
+        # compute a graph based on temporal data
+        # rather than to learn a runtime graph,
+        # which is too much time consuming for large graphs
+        self.saturation = 3.
+        self.rff = nn.Parameter(th.empty(self.num_nodes, num_units))
+
+        self.k = 3
+        self.num_blocks = config.num_blocks
+        # Linear
+        self.linears = nn.ModuleList()
+        self.norms = nn.ModuleList()
+        for _ in range(self.num_blocks):
+            self.linears.append(nn.Linear(num_units, num_units))
+            self.norms.append(nn.InstanceNorm1d(self.num_nodes))
+
+        # SAGEConv
+        self.layers = nn.ModuleList()
+        for _ in range(self.k):
+            self.layers.append(dglnn.SAGEConv(num_units, num_units, 'mean'))
+        self.msg_act = nn.LeakyReLU()
+        self.msg_drop = nn.Dropout(config.msg_drop)
+
+        # AIAConv
+        num_marks = config.num_marks
+        feat_drop = config.feat_drop
+        att_drop = config.att_drop
+        num_heads = config.num_heads
+        for _ in range(self.k, self.num_blocks):
+            self.layers.append(
+                DGLAIAConv(num_units, num_units, num_heads,
+                           num_marks, feat_drop, att_drop))
+
+        # Estimator Projection
+        hidden_units = num_units + self.num_timesteps_out * num_features
+        self.fc_combined = nn.Linear(hidden_units, num_units * self.num_timesteps_out)
+        self.ln = nn.LayerNorm(2 * num_units)
+        self.fc_o = nn.Linear(2 * num_units, 1)
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        nn.init.kaiming_uniform_(self.fc_x.weight, a=math.sqrt(5))
+        nn.init.kaiming_uniform_(self.fc_combined.weight, a=math.sqrt(5))
+        nn.init.kaiming_uniform_(self.fc_o.weight, a=math.sqrt(5))
+        nn.init.kaiming_uniform_(self.embedding, a=math.sqrt(5))
+        nn.init.zeros_(self.mask_embedding.weight)
+        nn.init.kaiming_uniform_(self.rff, a=math.sqrt(5))
+
+    def mask(self, tensor, feat: dict):
+        if not self.training or self.mask_rate == 0.:
+            return tensor
+
+        # mask_buskets: num_nodes, num_timesteps_out * batch_size, 1
+        mask_buskets = feat['p'].int().squeeze(2)
+        mask_embedding = self.mask_embedding(mask_buskets)
+
+        mask_sign = feat['p'].sign()
+        # print(tensor.shape, mask_sign.shape, mask_embedding.shape)
+        tensor = tensor * (1. - mask_sign) + mask_embedding * mask_sign
+        return tensor
+
+    def forward(self, graph, feat):
+        # nfeat: batch_size, num_timesteps_in, num_nodes, num_features
+        nfeat: th.Tensor = feat['x']
+        # => num_nodes, batch_size, num_timesteps_in * num_features
+        nfeat = th.cat(nfeat.chunk(self.num_timesteps_in, dim=1), dim=3)
+        nfeat = nfeat.squeeze(1).permute(1, 0, 2)
+
+        # mark_lookup: num_nodes, 1, num_marks
+        mark_lookup = self.mark_lookup.unsqueeze(1).to(nfeat.device)
+
+        # tfeat: batch_size, num_timesteps_out, num_nodes
+        tfeat: th.Tensor = feat['t'] / self.time_scalor
+        # tfeat: num_nodes, num_timesteps_out * batch_size, 1
+        tfeat = th.cat(tfeat.chunk(self.num_timesteps_out, dim=1), dim=0)
+        tfeat = tfeat.permute(2, 0, 1)
+
+        # ==== SAGEConv ====
+        rrf = self.rff
+        affinity = th.matmul(rrf, rrf.permute(1, 0))
+        affinity = th.tanh(affinity * self.saturation)
+        affinity = th.relu(affinity) + th.eye(self.num_nodes).to(nfeat.device)
+        # layer_previous: num_nodes, batch_size, num_units
+        layer_previous = th.relu(self.fc_x(nfeat)) + self.embedding.unsqueeze(1)
+        for i in range(self.k):
+            layer, linear, norm = self.layers[i], self.linears[i], self.norms[i]
+            layer_input = layer_previous
+            layer_geo = layer(graph, layer_input)
+            layer_adj = linear(layer_input)
+            layer_adj = th.matmul(layer_adj.permute(1, 2, 0), affinity).permute(2, 0, 1)
+            layer_previous = layer_geo + layer_adj
+            layer_previous = norm(layer_previous.permute(1, 0, 2)).permute(1, 0, 2)
+            layer_previous = self.msg_drop(self.msg_act(layer_previous))
+            # layer_previous = norm(layer_previous.permute(1, 0, 2)).permute(1, 0, 2)
+        sfeat = layer_previous
+
+        # ==== AIAConv ====
+        # tcodings: 1, 13, num_units
+        timestamps = th.arange(1 + self.num_timesteps_out).unsqueeze(0)
+        tcodings = self.tcoding(timestamps.to(nfeat.device))
+        # x_src: num_nodes, num_timesteps_out * batch_size, num_units
+        # tcodings_src: num_units
+        tcodings_src = tcodings[0, 0]
+        x_src = layer_previous + tcodings_src
+        x_src = x_src.tile(1, self.num_timesteps_out, 1)
+        # tcodings_dst: batch_size, num_timesteps_out, num_units
+        tcodings_dst = tcodings[:, 1:].tile(nfeat.shape[1], 1, 1)
+        # => num_timesteps_out * batch_size, 1, num_units
+        tcodings_dst = th.cat(tcodings_dst.chunk(self.num_timesteps_out, dim=1), dim=0)
+        # => 1, num_timesteps_out * batch_size, num_units
+        tcodings_dst = tcodings_dst.permute(1, 0, 2)
+        # x_dst: num_nodes, num_timesteps_out * batch_size, num_units
+        x_dst = layer_previous.tile(1, self.num_timesteps_out, 1)
+        x_dst = self.mask(x_dst, feat) + tcodings_dst
+        for i in range(self.k, self.num_blocks):
+            layer, linear = self.layers[i], self.linears[i]
+            # feat_src, x: num_nodes, num_timesteps_out * batch_size, num_units
+            feat_src = {'x': x_src}
+            # feat_src, x: num_nodes, num_timesteps_out * batch_size, num_units
+            #           t: num_nodes, num_timesteps_out * batch_size, num_units
+            #           m: num_nodes, 1, num_marks
+            feat_dst = {'x': x_dst,
+                        't': tfeat,
+                        'm': mark_lookup}
+            layer_input = (feat_src, feat_dst)
+            layer_geo = layer(graph, layer_input)
+            layer_adj = linear(x_dst)
+            layer_adj = th.matmul(layer_adj.permute(1, 2, 0), affinity).permute(2, 0, 1)
+            layer_previous = layer_geo + layer_adj
+            layer_previous = self.msg_drop(self.msg_act(layer_previous))
+            x_src, x_dst = layer_previous, layer_previous
+
+        # ==== DNN Estimator ====
+        # layer_previous: num_nodes, num_timesteps_out * batch_size, num_units
+        # => num_nodes, batch_size, num_timesteps_out, num_units
+        qfeat = th.stack(layer_previous.chunk(self.num_timesteps_out, dim=1), dim=2)
+        # => num_nodes * batch_size, num_timesteps_out, num_units
+        qfeat = th.cat(qfeat.chunk(self.num_nodes, dim=0), dim=1)
+        qfeat = qfeat.squeeze(0)
+
+        # nfeat: num_nodes, batch_size, num_timesteps_in * num_features
+        # sfeat: num_nodes, batch_size, num_units
+        combined = th.cat([nfeat, sfeat], dim=2)
+        # => 1, num_nodes * batch_size, num_timesteps_in * num_features + num_units
+        combined = th.cat(combined.chunk(self.num_nodes, dim=0), dim=1)
+        # => num_nodes * batch_size, 1, num_timesteps_out * num_units
+        combined = combined.permute(1, 0, 2)
+        combined = self.fc_combined(combined)
+        # => num_nodes * batch_size, num_timesteps_out, num_units
+        combined = th.cat(combined.chunk(self.num_timesteps_out, dim=2), dim=1)
+
+        # num_nodes * batch_size, num_timesteps_out, 2 * num_units
+        layer_outs = th.cat([qfeat, combined], dim=2)
+        layer_outs = self.ln(layer_outs.permute(1, 0, 2)).permute(1, 0, 2)
+
+        # num_nodes * batch_size, num_timesteps_out, 1
+        layer_outs = self.fc_o(layer_outs)
+        # => batch_size, num_timesteps_out, num_nodes
+        layer_outs = th.cat(layer_outs.chunk(self.num_nodes, dim=0), dim=2)
+        return layer_outs
+
+    @staticmethod
+    def loss(y_pred, y_true):
+        mask = (y_true != 0).float()
+        mask /= mask.mean()
+        loss = th.abs(y_pred - y_true)
+        loss = loss * mask
+        # trick for nans: https://discuss.pytorch.org/t/how-to-set-nan-in-tensor-to-0/3918/3
+        loss[loss != loss] = 0
+        return loss.mean()

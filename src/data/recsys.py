@@ -97,11 +97,11 @@ class Reader:
             self.save(fout_train, fout_valid, fout_test)
 
     def build(self, ftrain, fval_tr, fval_te, ftest_tr, ftest_te):
-        train_df: pd.DataFrame = pd.read_csv(ftrain, usecols=['uid', 'mid', 'time'])
-        valid_tr: pd.DataFrame = pd.read_csv(fval_tr, usecols=['uid', 'mid', 'time'])
-        valid_te: pd.DataFrame = pd.read_csv(fval_te, usecols=['uid', 'mid', 'time'])
-        test_tr: pd.DataFrame = pd.read_csv(ftest_tr, usecols=['uid', 'mid', 'time'])
-        test_te: pd.DataFrame = pd.read_csv(ftest_te, usecols=['uid', 'mid', 'time'])
+        train_df: pd.DataFrame = pd.read_csv(ftrain, usecols=['uid', 'sid', 'time'])
+        valid_tr: pd.DataFrame = pd.read_csv(fval_tr, usecols=['uid', 'sid', 'time'])
+        valid_te: pd.DataFrame = pd.read_csv(fval_te, usecols=['uid', 'sid', 'time'])
+        test_tr: pd.DataFrame = pd.read_csv(ftest_tr, usecols=['uid', 'sid', 'time'])
+        test_te: pd.DataFrame = pd.read_csv(ftest_te, usecols=['uid', 'sid', 'time'])
         valid_df = pd.concat([valid_tr, valid_te])
         test_df = pd.concat([test_tr, test_te])
         train_df.drop_duplicates(inplace=True)
@@ -112,10 +112,10 @@ class Reader:
         valid_df.sort_values(['uid', 'time'], inplace=True)
         test_df.sort_values(['uid', 'time'], inplace=True)
 
-        if train_df['mid'].min() == 0:
+        if train_df['sid'].min() == 0:
             raise RuntimeError('The item indices begin from zero, however zero is used for masking.')
 
-        num_items = train_df['mid'].max()
+        num_items = train_df['sid'].max()
         num_train_users = train_df['uid'].unique().size
         num_valid_users = valid_df['uid'].unique().size
         num_test_users = test_df['uid'].unique().size
@@ -127,7 +127,7 @@ class Reader:
         def filter_by_seqslen(df: pd.DataFrame, out):
             data_grouped_by_user = df.groupby('uid')
             for i, (_, group) in enumerate(data_grouped_by_user):
-                si = group['mid'].values.astype(np.int32)
+                si = group['sid'].values.astype(np.int32)
                 st = group['time'].values.astype(np.float32)
                 sl = min(si.size, self.seqs_len)
                 out['x'][i, :sl] = si[-sl:]

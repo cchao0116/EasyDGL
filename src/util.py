@@ -129,21 +129,21 @@ class EarlyStoppingV3(object):
         return self.early_stop
 
     def update(self, valid_res: dict, test_res: dict):
-        if not bool(self.best_valid_res):
+        best_valid_res = self.best_valid_res
+        if not bool(best_valid_res):
             self.best_valid_res = valid_res
             self.best_test_res = test_res
             return
 
-        for key, best_val in self.best_valid_res.items():
-            entry_to_update = valid_res[key] <= best_val
-            self.best_valid_res[key][entry_to_update] = valid_res[key][entry_to_update]
-            self.best_test_res[key][entry_to_update] = test_res[key][entry_to_update]
+        best_val = np.mean(best_valid_res['RMSE'] + 10 * best_valid_res['MAPE'])
+        curr_val = np.mean(valid_res['RMSE'] + 10 * valid_res['MAPE'])
+        if best_val > curr_val:
+            self.best_valid_res = valid_res
+            self.best_test_res = test_res
 
     def summary(self):
-        res = list()
-        for mae, rmse, mape in zip(
-                self.best_test_res['mae'], self.best_test_res['rmse'], self.best_test_res['mape']):
-            res.append(np.asarray([mae, rmse, mape]))
-        with np.printoptions(formatter={'float_kind': "{:.5f}".format}):
-            logging.info(
-                "==REPO===15m:{0}, 30m:{1}, 45m:{2}=====".format(res[0], res[1], res[2]))
+        res = self.best_test_res
+        logging.info(f"3H: [{res['MAE'][2]:.3f}, {res['RMSE'][2]:.3f}, {res['MAPE'][2]:.4f}] "
+                     f"-6H: [{res['MAE'][5]:.3f}, {res['RMSE'][5]:.3f}, {res['MAPE'][5]:.4f}] "
+                     f"-9H: [{res['MAE'][8]:.3f}, {res['RMSE'][8]:.3f}, {res['MAPE'][8]:.4f}] "
+                     f"-12H: [{res['MAE'][11]:.3f}, {res['RMSE'][11]:.3f}, {res['MAPE'][11]:.4f}]")

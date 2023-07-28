@@ -8,6 +8,7 @@ data:
   ftest_tr: data/Netflix/test_tr.csv
   ftest_te: data/Netflix/test_te.csv
   batch_size: 512
+  num_nodes: 17771
   time_scalor: 86400.
   mask_rate: 0.2
   mask_len: 6

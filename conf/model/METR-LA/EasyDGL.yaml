@@ -1,0 +1,30 @@
+ckpt_dir: ckpt/EasyDGL
+data:
+  fpath: data/METR-LA/
+  batch_size: 256
+  time_scalor: 1
+  num_nodes: 207
+  num_features: 2
+  num_timesteps_in: 12
+  num_timesteps_out: 12
+  mask_rate: 0.2
+  mask_sep: 10
+  mask_max: 10
+model:
+  n_classes: 12
+  num_blocks: 4
+  num_units: 64
+  num_heads: 8
+  feat_drop: 0.
+  msg_drop: 0.
+  att_drop: 0.
+  fmark: data/METR-LA/mark.npy
+train:
+  optimizer: adam
+  lr: 0.001
+  lr_decay_ratio: 0.998
+  weight_decay: 0.0001
+  epochs: 300
+  patience: 10
+  max_grad_norm: 5
+  test_every_n_epochs: 5

@@ -16,7 +16,7 @@ import yaml
 from torch.utils.data import DataLoader
 
 from data.recsys import Reader, NetflixDataset, collate_masklast, collate_maskrandom
-from model.EasyDGL import Recommener, EasyDGLConfig
+from model.EasyDGL import Recommender, EasyDGLConfig
 from util import EarlyStoppingV1
 
 
@@ -60,9 +60,7 @@ def evaluate(net, dataloader):
             dcg50 = th.sum(Tp[:, :50] * gain[:50], dim=1).cpu().numpy()
             idcg50 = idcg[np.minimum(P, 50) - 1]
             dcg100 = th.sum(Tp * gain, dim=1).cpu().numpy()
-
             idcg100 = idcg[np.minimum(P, 100) - 1]
-            a = dcg50 / idcg50
 
             measures["HR@50"].append(hr50)
             measures["NDCG@50"].append(dcg50 / idcg50)
@@ -115,7 +113,7 @@ def run():
     logging.info(f"epochs: {epochs}")
     logging.info(f"test_every_n_epochs: {test_every_n_epochs}")
 
-    net = Recommener(EasyDGLConfig(config)).to(device)
+    net = Recommender(EasyDGLConfig(config)).to(device)
     optim = th.optim.Adam(net.parameters(), lr, weight_decay=weight_decay)
     scheduler = th.optim.lr_scheduler.ExponentialLR(optim, gamma=lr_decay_ratio)
 

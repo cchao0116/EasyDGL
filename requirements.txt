@@ -4,7 +4,6 @@ scipy==1.7.3
 tensorflow-gpu==2.3.4
 tqdm~=4.64.0
 
-dgl~=0.8.2
-torch~=1.10.2
-yaml~=0.2.5
-pyyaml~=6.0
+dgl==1.0.3
+torch==1.13.0
+pyyaml==6.0
