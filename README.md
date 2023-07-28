@@ -36,14 +36,14 @@ Below we report the HR@50, NDCG@50 and NDCG@100 results *on the above provided d
 
 Below we summarize the performance
 with regards to different metrics and horizons
-on the METR-LA dataset (see ["DCRNN"](https://github.com/liyaguang/DCRNN)).
+on the METR-LA dataset (see [DCRNN](https://github.com/liyaguang/DCRNN)).
 
 |         |         | H=3  | H=6  |  H=12 |
 |:--------|:-------:|:----:|:----:|------:|
 | DCRNN   |   MAE   | 2.77 | 3.15 |  3.60 |
 |         |  RMSE   | 5.38 | 6.45 |  7.60 |
 |         | MAPE(%) | 7.30 | 8.80 | 10.50 |
-| AGRCN   |   MAE   | 2.87 | 3.23 |  3.62 |
+| AGCRN   |   MAE   | 2.87 | 3.23 |  3.62 |
 |         |  RMSE   | 5.58 | 6.58 |  7.51 |
 |         | MAPE(%) | 7.70 | 9.00 | 10.38 |
 | EasyDGL |   MAE   | 2.74 | 3.10 |  3.55 |
