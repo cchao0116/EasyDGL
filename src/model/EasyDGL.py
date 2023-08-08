@@ -12,7 +12,7 @@ import dgl.nn.pytorch as dglnn
 import torch as th
 import torch.nn as nn
 
-from model.util import PositionCoding, TimeSinusoidCoding, batch_gather
+from model.util import PositionCoding, TimeSinusoidCoding, batch_gather, GLU
 
 
 class EasyDGLConfig(object):
@@ -478,6 +478,40 @@ class DGLAIAConv(nn.Module):
             return outs
 
 
+class EncodingLayer(nn.Module):
+    def __init__(self, config: EasyDGLConfig):
+        super(EncodingLayer, self).__init__()
+        num_units = config.num_units
+        num_nodes = config.num_nodes
+
+        self.msg_act = nn.LeakyReLU()
+        self.msg_drop = nn.Dropout(config.msg_drop)
+
+        self.fc_orin = nn.Linear(num_units, num_units)
+        self.fc_adju = nn.Linear(num_units, num_units)
+        self.gconv = dglnn.SAGEConv(num_units, num_units, 'mean')
+        self.instnorm = nn.InstanceNorm1d(num_nodes)
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        nn.init.kaiming_uniform_(self.fc_orin.weight, a=math.sqrt(5))
+        nn.init.kaiming_uniform_(self.fc_adju.weight, a=math.sqrt(5))
+
+    def forward(self, g, ag, h):
+        # predefined graph
+        h_geo = self.fc_orin(h)
+        h_geo = self.gconv(g, h_geo, edge_weight=g.edata['ef'])
+
+        # learned (adjusted) graph
+        h_adj = self.fc_adju(h)
+        h_adj = th.matmul(h_adj.permute(1, 2, 0), ag).permute(2, 0, 1)
+
+        h_out = h_geo + h_adj
+        h_out = self.instnorm(h_out.permute(1, 0, 2)).permute(1, 0, 2)
+        h_out = self.msg_drop(self.msg_act(h_out))
+        return h_out
+
+
 class NodeRegressor(nn.Module):
 
     def __init__(self, config: EasyDGLConfig):
@@ -512,16 +546,15 @@ class NodeRegressor(nn.Module):
         self.k = 3
         self.num_blocks = config.num_blocks
         # Linear
-        self.linears = nn.ModuleList()
-        self.norms = nn.ModuleList()
-        for _ in range(self.num_blocks):
-            self.linears.append(nn.Linear(num_units, num_units))
-            self.norms.append(nn.InstanceNorm1d(self.num_nodes))
+        self.fc_h = nn.ModuleList()
+        for _ in range(self.k, self.num_blocks):
+            self.fc_h.append(nn.Linear(num_units, num_units))
 
         # SAGEConv
         self.layers = nn.ModuleList()
         for _ in range(self.k):
-            self.layers.append(dglnn.SAGEConv(num_units, num_units, 'mean'))
+            self.layers.append(EncodingLayer(config))
+        self.msg_glu = GLU(self.k * num_units + num_units, num_units)
         self.msg_act = nn.LeakyReLU()
         self.msg_drop = nn.Dropout(config.msg_drop)
 
@@ -538,16 +571,21 @@ class NodeRegressor(nn.Module):
         # Estimator Projection
         hidden_units = num_units + self.num_timesteps_out * num_features
         self.fc_combined = nn.Linear(hidden_units, num_units * self.num_timesteps_out)
-        self.ln = nn.LayerNorm(2 * num_units)
-        self.fc_o = nn.Linear(2 * num_units, 1)
+        self.combined_glu = GLU(num_units, num_units)
+        self.qfeat_glu = GLU(num_units, num_units)
+        self.layernorm = nn.LayerNorm(2 * num_units)
+        self.fc_o = nn.Linear(2 * num_units, 1, bias=False)
+        self.bias_o = nn.Parameter(th.empty(self.num_nodes))
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
         nn.init.kaiming_uniform_(self.fc_x.weight, a=math.sqrt(5))
         nn.init.kaiming_uniform_(self.fc_combined.weight, a=math.sqrt(5))
         nn.init.kaiming_uniform_(self.fc_o.weight, a=math.sqrt(5))
+
         nn.init.kaiming_uniform_(self.embedding, a=math.sqrt(5))
         nn.init.zeros_(self.mask_embedding.weight)
+        nn.init.zeros_(self.bias_o)
         nn.init.kaiming_uniform_(self.rff, a=math.sqrt(5))
 
     def mask(self, tensor, feat: dict):
@@ -579,24 +617,21 @@ class NodeRegressor(nn.Module):
         tfeat = th.cat(tfeat.chunk(self.num_timesteps_out, dim=1), dim=0)
         tfeat = tfeat.permute(2, 0, 1)
 
-        # ==== SAGEConv ====
+        # ag: num_nodes, num_nodes
         rrf = self.rff
-        affinity = th.matmul(rrf, rrf.permute(1, 0))
-        affinity = th.tanh(affinity * self.saturation)
-        affinity = th.relu(affinity) + th.eye(self.num_nodes).to(nfeat.device)
+        ag = th.matmul(rrf, rrf.permute(1, 0))
+        ag = th.tanh(ag * self.saturation)
+        ag = th.relu(ag) + th.eye(self.num_nodes).to(nfeat.device)
+
+        # ==== SAGEConv ====
         # layer_previous: num_nodes, batch_size, num_units
         layer_previous = th.relu(self.fc_x(nfeat)) + self.embedding.unsqueeze(1)
+        msg_prop = [layer_previous]
         for i in range(self.k):
-            layer, linear, norm = self.layers[i], self.linears[i], self.norms[i]
-            layer_input = layer_previous
-            layer_geo = layer(graph, layer_input)
-            layer_adj = linear(layer_input)
-            layer_adj = th.matmul(layer_adj.permute(1, 2, 0), affinity).permute(2, 0, 1)
-            layer_previous = layer_geo + layer_adj
-            layer_previous = norm(layer_previous.permute(1, 0, 2)).permute(1, 0, 2)
-            layer_previous = self.msg_drop(self.msg_act(layer_previous))
-            # layer_previous = norm(layer_previous.permute(1, 0, 2)).permute(1, 0, 2)
-        sfeat = layer_previous
+            layer_previous = self.layers[i](graph, ag, layer_previous)
+            msg_prop.append(layer_previous)
+        sfeat = self.msg_glu(th.cat(msg_prop, dim=2))
+        layer_previous = sfeat
 
         # ==== AIAConv ====
         # tcodings: 1, 13, num_units
@@ -617,7 +652,7 @@ class NodeRegressor(nn.Module):
         x_dst = layer_previous.tile(1, self.num_timesteps_out, 1)
         x_dst = self.mask(x_dst, feat) + tcodings_dst
         for i in range(self.k, self.num_blocks):
-            layer, linear = self.layers[i], self.linears[i]
+            layer, linear = self.layers[i], self.fc_h[i - self.k]
             # feat_src, x: num_nodes, num_timesteps_out * batch_size, num_units
             feat_src = {'x': x_src}
             # feat_src, x: num_nodes, num_timesteps_out * batch_size, num_units
@@ -629,7 +664,7 @@ class NodeRegressor(nn.Module):
             layer_input = (feat_src, feat_dst)
             layer_geo = layer(graph, layer_input)
             layer_adj = linear(x_dst)
-            layer_adj = th.matmul(layer_adj.permute(1, 2, 0), affinity).permute(2, 0, 1)
+            layer_adj = th.matmul(layer_adj.permute(1, 2, 0), ag).permute(2, 0, 1)
             layer_previous = layer_geo + layer_adj
             layer_previous = self.msg_drop(self.msg_act(layer_previous))
             x_src, x_dst = layer_previous, layer_previous
@@ -641,6 +676,7 @@ class NodeRegressor(nn.Module):
         # => num_nodes * batch_size, num_timesteps_out, num_units
         qfeat = th.cat(qfeat.chunk(self.num_nodes, dim=0), dim=1)
         qfeat = qfeat.squeeze(0)
+        qfeat = self.qfeat_glu(qfeat)
 
         # nfeat: num_nodes, batch_size, num_timesteps_in * num_features
         # sfeat: num_nodes, batch_size, num_units
@@ -652,15 +688,17 @@ class NodeRegressor(nn.Module):
         combined = self.fc_combined(combined)
         # => num_nodes * batch_size, num_timesteps_out, num_units
         combined = th.cat(combined.chunk(self.num_timesteps_out, dim=2), dim=1)
+        combined = self.combined_glu(combined)
 
         # num_nodes * batch_size, num_timesteps_out, 2 * num_units
         layer_outs = th.cat([qfeat, combined], dim=2)
-        layer_outs = self.ln(layer_outs.permute(1, 0, 2)).permute(1, 0, 2)
+        layer_outs = self.layernorm(layer_outs.permute(1, 0, 2)).permute(1, 0, 2)
 
         # num_nodes * batch_size, num_timesteps_out, 1
         layer_outs = self.fc_o(layer_outs)
         # => batch_size, num_timesteps_out, num_nodes
         layer_outs = th.cat(layer_outs.chunk(self.num_nodes, dim=0), dim=2)
+        layer_outs = layer_outs + self.bias_o
         return layer_outs
 
     @staticmethod

@@ -3,6 +3,8 @@
 @author: Chao Chen
 @contact: chao.chen@sjtu.edu.cn
 """
+import math
+
 import numpy as np
 import torch as th
 import torch.nn as nn
@@ -103,3 +105,16 @@ class TimeSinusoidCoding(nn.Module):
         tcoding = th.stack([code_even, code_odd], dim=-1)
         tcoding = tcoding.view([-1, shape_list[1], self.num_units])
         return tcoding
+
+
+class GLU(nn.Module):
+    def __init__(self, in_features, out_features):
+        super(GLU, self).__init__()
+        self.linear = nn.Linear(in_features, 2 * out_features)
+        nn.init.kaiming_uniform_(self.linear.weight, a=math.sqrt(5))
+
+    def forward(self, tensor: th.Tensor):
+        h = self.linear(tensor)
+        gate, gain = h.chunk(2, dim=-1)
+        h = th.tanh(gain) * th.sigmoid(gate)
+        return h

@@ -7,7 +7,7 @@ data:
   num_features: 2
   num_timesteps_in: 12
   num_timesteps_out: 12
-  mask_rate: 0.2
+  mask_rate: 0.05
   mask_sep: 10
   mask_max: 10
 model:

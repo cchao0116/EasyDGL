@@ -15,10 +15,10 @@ import torch.nn as nn
 import yaml
 from torch.utils.data import DataLoader
 
+from data.masking import CorrelationAdjustedMask
 from data.traffic import METRDataset
 from data.traffic import Reader
 from data.traffic import collate_fn, collate_mask
-from data.masking import CorrelationAdjustedMask
 from model.EasyDGL import NodeRegressor, EasyDGLConfig
 from util import EarlyStoppingV3
 
@@ -108,11 +108,11 @@ def run():
     mask_fn = CorrelationAdjustedMask(mask_rate, mask_sep, mask_max)
     collate_mask_fn = functools.partial(collate_mask, mask_fn=mask_fn)
     train_dataloader = DataLoader(train_data, batch_size=batch_size, num_workers=4,
-                                  shuffle=True, collate_fn=collate_mask_fn)
+                                  shuffle=True, collate_fn=collate_mask_fn, pin_memory=True)
     valid_dataloader = DataLoader(valid_data, batch_size=batch_size,
-                                  shuffle=True, collate_fn=collate_fn)
+                                  shuffle=False, collate_fn=collate_fn)
     test_dataloader = DataLoader(test_data, batch_size=batch_size,
-                                 shuffle=True, collate_fn=collate_fn)
+                                 shuffle=False, collate_fn=collate_fn)
 
     training_config = config['train']
     patience = training_config.get('patience')
@@ -155,7 +155,7 @@ def run():
             running_loss.append(loss.item())
 
             # Back-propogation
-            optim.zero_grad()
+            optim.zero_grad(set_to_none=True)
             loss.backward()
             nn.utils.clip_grad_norm_(net.parameters(), grad_clip)
             optim.step()
