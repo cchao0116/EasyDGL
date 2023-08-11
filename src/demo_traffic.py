@@ -19,7 +19,7 @@ from data.masking import CorrelationAdjustedMask
 from data.traffic import METRDataset
 from data.traffic import Reader
 from data.traffic import collate_fn, collate_mask
-from model.EasyDGL import NodeRegressor, EasyDGLConfig
+from helper import TrafficForecasting
 from util import EarlyStoppingV3
 
 
@@ -116,22 +116,23 @@ def run():
 
     training_config = config['train']
     patience = training_config.get('patience')
+    test_every_n_epochs = training_config.get('test_every_n_epochs')
     epochs = training_config.get('epochs')
     lr = training_config.get('lr')
-    lr_decay_ratio = training_config.get('lr_decay_ratio')
-    weight_decay = training_config.get('weight_decay')
+    eps = training_config.get('eps', 1e-8)
+    lr_decay_ratio = training_config.get('lr_decay_ratio', 1.)
+    weight_decay = training_config.get('weight_decay', 0.)
     grad_clip = training_config.get('max_grad_norm')
-    test_every_n_epochs = training_config.get('test_every_n_epochs')
     logging.info("======train configure======")
     logging.info(f"learning rate: {lr}")
+    logging.info(f"eps in Adam: {eps}")
     logging.info(f"learning decay ratio: {lr_decay_ratio}")
     logging.info(f"l2 weight decay: {weight_decay}")
     logging.info(f"epochs: {epochs}")
-    logging.info(f"test_every_n_epochs: {test_every_n_epochs}")
 
-    net = NodeRegressor(EasyDGLConfig(config)).to(device)
-    optim = th.optim.Adam(net.parameters(), lr, weight_decay=weight_decay)
-    scheduler = th.optim.lr_scheduler.ExponentialLR(optim, gamma=lr_decay_ratio)
+    # net = NodeRegressor(EasyDGLConfig(config)).to(device)
+    net, optim, scheduler = TrafficForecasting.build(config)
+    net = net.to(device)
 
     stopper = EarlyStoppingV3(patience)
     for epoch in range(epochs + 1):

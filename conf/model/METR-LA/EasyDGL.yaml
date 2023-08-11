@@ -1,4 +1,4 @@
-ckpt_dir: ckpt/EasyDGL
+m: EasyDGL
 data:
   fpath: data/METR-LA/
   batch_size: 256
@@ -11,7 +11,7 @@ data:
   mask_sep: 10
   mask_max: 10
 model:
-  n_classes: 12
+  n_classes: 1
   num_blocks: 4
   num_units: 64
   num_heads: 8

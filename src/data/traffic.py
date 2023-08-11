@@ -29,7 +29,7 @@ def collate_mask(list_tensors, mask_fn):
     labels = th.from_numpy(ys).float()
     ps = mask_fn(labels)
 
-    decoded_tensors = {'x': xs, 't': ts, 'p': ps}
+    decoded_tensors = {'x': xs, 't': ts, 'p': ps, 'y': labels}
     return decoded_tensors, labels
 
 
