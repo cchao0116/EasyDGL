@@ -20,7 +20,7 @@ from data.traffic import METRDataset
 from data.traffic import Reader
 from data.traffic import collate_fn, collate_mask
 from helper import TrafficForecasting
-from util import EarlyStoppingV3
+from util import EarlyStoppingV3, WallClock
 
 
 class StandardScaler:
@@ -45,6 +45,7 @@ def args():
     parser = argparse.ArgumentParser(description='EasyDGL Benchmark')
     parser.add_argument('--config', default='conf/model/METR-LA/EasyDGL.yaml', type=str,
                         help='Config file.')
+    parser.add_argument('--seed', type=int, default=9876)
     parser.add_argument('--device', type=int, default=0,
                         help='running device. E.g `--device 0`, if using cpu, set `--device -1`')
     return parser.parse_args()
@@ -134,11 +135,13 @@ def run():
     net, optim, scheduler = TrafficForecasting.build(config)
     net = net.to(device)
 
+    wallclock = WallClock()
     stopper = EarlyStoppingV3(patience)
     for epoch in range(epochs + 1):
         running_loss = list()
 
         # training stage
+        wallclock.tik()
         net.train()
         for feat, label in train_dataloader:
             feat = {k: v.to(device) for k, v in feat.items()}
@@ -147,6 +150,8 @@ def run():
                 continue
 
             feat['x'] = scaler.transform(feat['x'])
+            # Here for Curriculum Learning
+            feat['y'] = scaler.transform(feat['y'])
 
             # Forward-inference
             y_pred = net.forward(graph, feat)
@@ -160,10 +165,11 @@ def run():
             loss.backward()
             nn.utils.clip_grad_norm_(net.parameters(), grad_clip)
             optim.step()
+        wallclock.tok()
 
         scheduler.step()  # update the learning rate
-        logging.info("{0:3d}, loss={1:5f}, lr={2:5f}".format(
-            epoch, np.mean(running_loss), scheduler.get_last_lr()[0]))
+        logging.info("{0:3d}, loss={1:5f}, lr={2:5f} -- {3:.1f}s".format(
+            epoch, np.mean(running_loss), scheduler.get_last_lr()[0], wallclock.elapse()))
 
         # evaluation stage
         if epoch % test_every_n_epochs == 0:
@@ -183,6 +189,7 @@ def run():
             if stopper.early_stop:
                 break
     stopper.summary()
+    wallclock.summary()
 
 
 if __name__ == "__main__":

@@ -1,0 +1,26 @@
+m: AGCRN
+data:
+  fpath: data/METR-LA/
+  batch_size: 64
+  num_nodes: 207
+  num_features: 2
+  num_timesteps_in: 12
+  num_timesteps_out: 12
+  mask_rate: 0.0
+  mask_sep: 10
+  mask_max: 10
+model:
+  n_classes: 1
+  num_blocks: 2
+  num_units: 10
+  diffution_steps: 2
+train:
+  optimizer: adam
+  lr: 0.003
+  lr_decay_ratio: 0.3
+  eps: 0.001
+  epochs: 100
+  steps: [5, 20, 40, 70]
+  patience: 10
+  max_grad_norm: 5
+  test_every_n_epochs: 10

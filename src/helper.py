@@ -16,6 +16,9 @@ class TrafficForecasting:
         elif model in ['DCRNN']:
             from model import DCRNN, DCRNNConfig
             net = DCRNN(DCRNNConfig(config))
+        elif model in ['AGCRN']:
+            from model.AGCRN import AGCRN, AGCRNConfig
+            net = AGCRN(AGCRNConfig(config))
         else:
             raise RuntimeError('{model} is not matched.')
 
@@ -30,7 +33,7 @@ class TrafficForecasting:
         else:
             raise RuntimeError('{optimizer} is not matched.')
 
-        if model in ['DCRNN']:
+        if model in ['DCRNN', 'AGCRN']:
             steps = training_config['steps']
             scheduler = th.optim.lr_scheduler.MultiStepLR(optim, milestones=steps, gamma=lr_decay_ratio)
         else:

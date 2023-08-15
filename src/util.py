@@ -4,7 +4,7 @@
 @contact: chao.chen@sjtu.edu.cn
 """
 import logging
-
+import time
 import numpy as np
 
 
@@ -147,3 +147,24 @@ class EarlyStoppingV3(object):
                      f"-6H: [{res['MAE'][5]:.3f}, {res['RMSE'][5]:.3f}, {res['MAPE'][5]:.4f}] "
                      f"-9H: [{res['MAE'][8]:.3f}, {res['RMSE'][8]:.3f}, {res['MAPE'][8]:.4f}] "
                      f"-12H: [{res['MAE'][11]:.3f}, {res['RMSE'][11]:.3f}, {res['MAPE'][11]:.4f}]")
+
+
+class WallClock(object):
+    def __init__(self):
+        self.elapsed = list()
+        self.now = self.last = None
+
+    def tik(self):
+        self.last = time.time()
+
+    def tok(self):
+        self.now = time.time()
+
+    def elapse(self):
+        elapse = self.now - self.last
+        self.elapsed.append(elapse)
+        return elapse
+
+    def summary(self):
+        mu = np.mean(self.elapsed)
+        logging.info(f"Runtime: {mu:.1f} sec.")
