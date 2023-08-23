@@ -64,8 +64,9 @@ class MTGraph(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
-        nn.init.kaiming_uniform_(self.emb0, a=math.sqrt(5))
-        nn.init.kaiming_uniform_(self.emb1, a=math.sqrt(5))
+        # normal_ is must-be, impact the performance
+        nn.init.normal_(self.emb0)
+        nn.init.normal_(self.emb1)
         nn.init.kaiming_uniform_(self.linear0.weight, a=math.sqrt(5))
         nn.init.kaiming_uniform_(self.linear1.weight, a=math.sqrt(5))
 
