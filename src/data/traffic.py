@@ -179,7 +179,5 @@ class Reader(object):
     def load(self, fout_congest):
         npzfiles = np.load(fout_congest)
         self.train_data['t'] = npzfiles['train_event']
-        self.train_data['mean'] = npzfiles['mean']
-        self.train_data['std'] = npzfiles['std']
         self.valid_data['t'] = npzfiles['valid_event']
         self.test_data['t'] = npzfiles['test_event']

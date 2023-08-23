@@ -1,0 +1,35 @@
+m: MTGNN
+data:
+  fpath: data/METR-LA/
+  batch_size: 64
+  num_nodes: 207
+  num_features: 2
+  num_timesteps_in: 12
+  num_timesteps_out: 12
+  mask_rate: 0.0
+  mask_sep: 10
+  mask_max: 10
+model:
+  n_classes: 12
+  num_blocks: 3
+  num_units: 40
+  diffution_steps: 2
+  msg_drop: 0.3
+  feat_drop: 0.3
+  dilation_exponential: 1
+  residual_channels: 32
+  conv_channels: 32
+  skip_channels: 64
+  out_channels: 128
+  propalpha: 0.05
+  tanhalpha: 3.0
+  neigh_topk: 20
+train:
+  optimizer: adam
+  lr: 0.001
+  lr_decay_ratio: 1.0
+  weight_decay: 0.0001
+  epochs: 100
+  patience: 10
+  max_grad_norm: 5
+  test_every_n_epochs: 10

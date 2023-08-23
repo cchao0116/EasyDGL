@@ -12,7 +12,7 @@ data:
 model:
   n_classes: 1
   num_blocks: 2
-  num_units: 10
+  num_units: 64
   diffution_steps: 2
 train:
   optimizer: adam

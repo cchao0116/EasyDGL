@@ -23,24 +23,6 @@ from helper import TrafficForecasting
 from util import EarlyStoppingV3, WallClock
 
 
-class StandardScaler:
-    """
-    Standard the input
-    """
-
-    def __init__(self, mean, std):
-        self.mean = mean
-        self.std = std
-
-    def transform(self, data):
-        # data: batch_size, num_timesteps_in, num_nodes, num_features
-        return (data - self.mean) / self.std
-
-    def inverse_transform(self, data):
-        # data: batch_size, num_timesteps_out, num_nodes
-        return (data * self.std[:, 0]) + self.mean[:, 0]
-
-
 def args():
     parser = argparse.ArgumentParser(description='EasyDGL Benchmark')
     parser.add_argument('--config', default='conf/model/METR-LA/EasyDGL.yaml', type=str,
@@ -93,10 +75,6 @@ def run():
     valid_data = METRDataset(reader.valid_data)
     test_data = METRDataset(reader.test_data)
 
-    xtrain_mean = th.from_numpy(reader.train_data['mean']).float().to(device)
-    xtrain_std = th.from_numpy(reader.train_data['std']).float().to(device)
-    scaler = StandardScaler(xtrain_mean, xtrain_std)
-
     batch_size = data_config.get('batch_size')
     mask_rate = data_config.get('mask_rate')
     mask_sep = data_config.get('mask_sep')
@@ -131,8 +109,7 @@ def run():
     logging.info(f"l2 weight decay: {weight_decay}")
     logging.info(f"epochs: {epochs}")
 
-    # net = NodeRegressor(EasyDGLConfig(config)).to(device)
-    net, optim, scheduler = TrafficForecasting.build(config)
+    net, optim, scheduler, scaler = TrafficForecasting.build(config, reader)
     net = net.to(device)
 
     wallclock = WallClock()
