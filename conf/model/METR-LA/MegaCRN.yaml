@@ -1,0 +1,32 @@
+m: MegaCRN
+data:
+  fpath: data/METR-LA/
+  batch_size: 64
+  num_nodes: 207
+  num_features: 1
+  num_timesteps_in: 12
+  num_timesteps_out: 12
+  mask_rate: 0.0
+  mask_sep: 10
+  mask_max: 10
+model:
+  n_classes: 1
+  num_blocks: 1
+  rnn_units: 64
+  num_units: 64
+  diffution_steps: 3
+  cl_decay_steps: 2000
+  mem_num: 20
+  mem_dim: 64
+  separate_loss_W: 0.01
+  compact_loss_W: 0.01
+train:
+  optimizer: adam
+  lr: 0.01
+  lr_decay_ratio: 0.1
+  eps: 0.001
+  epochs: 200
+  steps: [ 50, 100 ]
+  patience: 20
+  max_grad_norm: 5
+  test_every_n_epochs: 1

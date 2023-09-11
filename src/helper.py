@@ -3,6 +3,7 @@
 @author: Chao Chen
 @contact: chao.chen@sjtu.edu.cn
 """
+import numpy as np
 import torch as th
 
 
@@ -22,8 +23,11 @@ class TrafficForecasting:
         elif model in ['MTGNN']:
             from model.MTGNN import MTGNN, MTGNNConfig
             net = MTGNN(MTGNNConfig(config))
+        elif model in ['MegaCRN']:
+            from model.MegaCRN import MegaCRN, MegaCRNConfig
+            net = MegaCRN(MegaCRNConfig(config))
         else:
-            raise RuntimeError('{model} is not matched.')
+            raise RuntimeError(f'{model} is not matched.')
 
         training_config = config['train']
         lr = training_config.get('lr')
@@ -36,20 +40,20 @@ class TrafficForecasting:
         else:
             raise RuntimeError('{optimizer} is not matched.')
 
-        if model in ['DCRNN', 'AGCRN']:
+        if model in ['DCRNN', 'AGCRN', 'MegaCRN']:
             steps = training_config['steps']
             scheduler = th.optim.lr_scheduler.MultiStepLR(optim, milestones=steps, gamma=lr_decay_ratio)
         else:
             scheduler = th.optim.lr_scheduler.ExponentialLR(optim, gamma=lr_decay_ratio)
 
-        if model in ['MTGNN']:
+        if model in ['MTGNN', 'EasyDGL', 'MegaCRN']:
             mean = reader.train_data['x'][..., 0].mean()
             std = reader.train_data['x'][..., 0].std()
             scaler = StandardScaler(mean, std)
         else:
-            mean = reader.train_data['x'].mean([0, 1])
+            mean = np.mean(reader.train_data['x'], axis=(0, 1))
             mean = th.from_numpy(mean).float()
-            std = reader.train_data['x'].std([0, 1])
+            std = np.std(reader.train_data['x'], axis=(0, 1))
             std = th.from_numpy(std).float()
             scaler = StandardScalerV1(mean, std)
         return net, optim, scheduler, scaler

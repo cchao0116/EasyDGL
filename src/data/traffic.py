@@ -27,9 +27,10 @@ def collate_mask(list_tensors, mask_fn):
     xs = th.from_numpy(xs).float()
     ts = th.from_numpy(ts).float()
     labels = th.from_numpy(ys).float()
+    y_cov = labels[..., 1:]
     ps = mask_fn(labels)
 
-    decoded_tensors = {'x': xs, 't': ts, 'p': ps, 'y': labels}
+    decoded_tensors = {'x': xs, 't': ts, 'p': ps, 'y': labels, 'y_cov': y_cov}
     return decoded_tensors, labels
 
 
@@ -41,9 +42,11 @@ def collate_fn(list_tensors):
     xs = np.concatenate(xs, axis=0)
     ts = np.concatenate(ts, axis=0)
     ys = np.concatenate(ys, axis=0)
+    y_cov = ys[..., 1:]
 
     decoded_tensors = {'x': th.from_numpy(xs).float(),
-                       't': th.from_numpy(ts).float()}
+                       't': th.from_numpy(ts).float(),
+                       'y_cov': th.from_numpy(y_cov).float()}
     labels = th.from_numpy(ys).float()
     return decoded_tensors, labels
 

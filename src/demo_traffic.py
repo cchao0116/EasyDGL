@@ -123,8 +123,6 @@ def run():
         for feat, label in train_dataloader:
             feat = {k: v.to(device) for k, v in feat.items()}
             y_true = label[..., 0].to(device)
-            if th.sum(y_true).item() == 0.:
-                continue
 
             feat['x'] = scaler.transform(feat['x'])
             # Here for Curriculum Learning
@@ -171,14 +169,16 @@ def run():
 
 if __name__ == "__main__":
     logging.config.fileConfig('./conf/logging.conf')
+    flags = args()
 
-    SEED = 9876
+    SEED = flags.seed
     np.random.seed(SEED)
     random.seed(SEED)
     th.manual_seed(SEED)
+    th.backends.cudnn.benchmark = False
+    th.backends.cudnn.deterministic = True
     os.environ['PYTHONHASHSEED'] = str(SEED)
 
-    flags = args()
     config = yaml.load(open(flags.config, 'r'), yaml.Loader)
     device = th.device(flags.device) if flags.device >= 0 else th.device('cpu')
 
