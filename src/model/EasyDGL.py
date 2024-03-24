@@ -49,8 +49,6 @@ class EasyDGL(Sequential):
         with tf.variable_scope("CSTMA"):
             self.item_embs = C.Embedding(self.num_items, self.num_units, self.l2_reg,
                                          zero_pad=True, scale=True, scope="item_embs")
-            self.mark_embs = C.Embedding(self.num_events, self.num_units, self.l2_reg,
-                                         zero_pad=True, scale=False, scope="mark_embs")
             self.pcoding = C.PositionCoding(self.seqslen, self.num_units, self.l2_reg, scope="spatial_embs")
             self.tcoding = C.TimeSinusoidCoding(self.num_units)
 
@@ -69,6 +67,7 @@ class EasyDGL(Sequential):
     def __call__(self, features, is_training):
         seqs_ids = features['seqs_i']
         seqs_ts = features['seqs_t'] / self.time_scale
+        seqs_ds = tf.concat([features['seqs_month'] / 12., features['seqs_weekday'] / 7.], axis=-1)
 
         seqs_spans = clip_by_value(seqs_ts[:, 1:] - seqs_ts[:, :-1])
         seqs_spans = tf.concat([seqs_spans[:, :1], seqs_spans], axis=-1)
@@ -84,8 +83,8 @@ class EasyDGL(Sequential):
         posn_codes = self.pcoding.code(seqs_units)
 
         # event mark encoding
-        marks_codes = tf.nn.embedding_lookup(self.mark_embs.lookup_table, seqs_marks)
-        marks_codes = tf.reduce_sum(marks_codes, axis=2)
+        with tf.variable_scope("encoding/mark"):
+            marks_codes = tf.layers.dense(seqs_marks, self.num_units, use_bias=False)
         seqs_units = tf.concat([seqs_units, posn_codes, marks_codes], axis=-1)
 
         # Dropout
@@ -105,7 +104,7 @@ class EasyDGL(Sequential):
                     with tf.variable_scope("self"):
                         # sequential-temporal representations
                         attention_outs, seqs_intny = attention(layer_inputs, layer_inputs, seqs_masks,
-                                                               seqs_spans, seqs_marks, is_training)
+                                                               seqs_spans, seqs_marks, seqs_ds, is_training)
 
                     # Run a linear projection of `hidden_size` then add a residual
                     # with `layer_input`.

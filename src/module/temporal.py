@@ -401,7 +401,7 @@ class BiMAU(MAU):
     def __init__(self, num_units, num_heads, num_events, dropout_rate, scope="TMAU"):
         super().__init__(num_units, num_heads, num_events, dropout_rate, scope)
 
-    def __call__(self, queries, keys, masks, intervals, marks, is_training, causality=None):
+    def __call__(self, queries, keys, masks, intervals, marks, dates, is_training, causality=None):
         num_units, num_heads, dropout_rate = self.num_units, self.num_heads, self.dropout_rate
 
         with tf.variable_scope(self.scope):
@@ -425,8 +425,45 @@ class BiMAU(MAU):
             paddings = tf.ones_like(outputs) * (-2 ** 32 + 1)
             outputs = tf.where(tf.equal(masks, 0), paddings, outputs)  # (h*N, T_q, T_k)
 
+            # Structured Affinities
+            with tf.variable_scope("affinities"):
+                with tf.name_scope("prj/dates"):
+                    D = tf.layers.dense(
+                        dates, self.num_units * self.num_units // self.num_heads, activation=tf.nn.relu)
+                    D = tf.layers.dense(
+                        D, self.num_units * self.num_units // self.num_heads, name='mh')
+                    D_ = tf.concat(tf.split(D, num_heads, axis=3), axis=0)  # (h*N, T_q, C/h * C/h)
+                    D_ = tf.stack(tf.split(D, self.num_units // self.num_heads, axis=3))  # (h*N, T_q, C/h, C/h)
+
+                # Idea 1:
+                with tf.name_scope("prj/events"):
+                    E = tf.layers.dense(marks, self.num_units, use_bias=False)
+                    E_ = tf.concat(tf.split(E, num_heads, axis=2), axis=0)
+
+                affinities = tf.einsum('bqij,bqj->bqi', D_, E_)
+                affinities = tf.einsum('bqi,bki->bqk', affinities, E_)
+                affinities = affinities / (K_.get_shape().as_list()[-1] ** 0.5)
+
+
+                # with tf.name_scope("prj/event"):
+                #     event_embs = tf.get_variable(
+                #         'embs', shape=[self.num_events, self.num_units], initializer=WEIGHT_INITIALIZER)
+                #     event_embs = tf.concat([tf.zeros([1, self.num_units]), event_embs], axis=0)
+                #
+                #     M = tf.nn.embedding_lookup(event_embs, marks * tf.range(1, 1 + self.num_events))
+                #     M_ = tf.concat(tf.split(M, num_heads, axis=3), axis=0)  # (h*N, T_k, E, C/h)
+                #
+                # with tf.name_scope("prj/dates"):
+                #     D = tf.layers.dense(
+                #         dates, self.num_heads * self.num_events, activation=tf.nn.relu)
+                #     D = tf.layers.dense(
+                #         D, self.num_heads * self.num_events, name='mh')  # (N, T_q, h*E)
+                #     D_ = tf.concat(tf.split(D, num_heads, axis=3), axis=0)  # (h*N, T_q, E)
+                #
+                # affinities = tf.einsum('bqe,bkeh->bqkh', D_, M_)
+
             # Activation
-            outputs = tf.nn.softmax(outputs)  # (h*N, T_q, T_k)
+            outputs = tf.nn.softmax(outputs + affinities)  # (h*N, T_q, T_k)
 
             # Weighted sum
             # marked_intensity_4d: marked intensity for every past events (h*N, T_q, T_k)

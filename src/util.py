@@ -121,7 +121,7 @@ def reader(FLAGS, file_pattern, is_training: bool):
         seqslen = FLAGS.seqslen + 1
         mask = FLAGS.num_items
         return D.InputReader(file_pattern, is_training=is_training,
-                             decoder=D.TfExampleDecoder(seqslen, has_datetime=False),
+                             decoder=D.TfExampleDecoder(seqslen, has_datetime=True),
                              processor=D.MAUPostProcessor(seqslen, FLAGS.masklen, mask, is_training))
     else:
         return D.InputReader(file_pattern, is_training=is_training,
