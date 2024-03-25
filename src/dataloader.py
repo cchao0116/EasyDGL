@@ -169,12 +169,16 @@ class MAUPostProcessor(object):
         masked_tokens = masked_positions_indicator * (self.mask - tokens) + tokens
 
         timestamps = decoded_tensors['seqs_t']
+        seqs_month = decoded_tensors['seqs_month']
+        seqs_weekday = decoded_tensors['seqs_weekday']
 
         features = {
             # the masked sequence tokens
             'seqs_i': masked_tokens,
             # the sequence timestamps
-            'seqs_t': timestamps}
+            'seqs_t': timestamps,
+            'seqs_month': seqs_month,
+            'seqs_weekday': seqs_weekday}
         labels = tokens
         return features, labels
 
@@ -189,6 +193,8 @@ class MAUPostProcessor(object):
         masked_tokens = masked_positions_indicator * (self.mask - tokens) + tokens
 
         timestamps = decoded_tensors['seqs_t']
+        seqs_month = decoded_tensors['seqs_month']
+        seqs_weekday = decoded_tensors['seqs_weekday']
 
         features = {
             # the masked sequence tokens
@@ -196,7 +202,9 @@ class MAUPostProcessor(object):
             # the positions for masked tokens
             'masked_positions': masked_positions,
             # the sequence timestamps
-            'seqs_t': timestamps}
+            'seqs_t': timestamps,
+            'seqs_month': seqs_month,
+            'seqs_weekday': seqs_weekday}
         labels = tf.gather(tokens, masked_positions)
         return features, labels
 

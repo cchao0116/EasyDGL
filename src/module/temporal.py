@@ -432,18 +432,18 @@ class BiMAU(MAU):
                         dates, self.num_units * self.num_units // self.num_heads, activation=tf.nn.relu)
                     D = tf.layers.dense(
                         D, self.num_units * self.num_units // self.num_heads, name='mh')
-                    D_ = tf.concat(tf.split(D, num_heads, axis=3), axis=0)  # (h*N, T_q, C/h * C/h)
-                    D_ = tf.stack(tf.split(D, self.num_units // self.num_heads, axis=3))  # (h*N, T_q, C/h, C/h)
+                    D_ = tf.concat(tf.split(D, num_heads, axis=2), axis=0)  # (h*N, T_q, C/h * C/h)
+                    D_ = tf.stack(tf.split(D_, self.num_units // self.num_heads, axis=2),
+                                  axis=3)  # (h*N, T_q, C/h, C/h)
 
-                # Idea 1:
+                # # Idea 1:
                 with tf.name_scope("prj/events"):
-                    E = tf.layers.dense(marks, self.num_units, use_bias=False)
+                    E = tf.layers.dense(tf.to_float(marks), self.num_units, use_bias=False)
                     E_ = tf.concat(tf.split(E, num_heads, axis=2), axis=0)
 
                 affinities = tf.einsum('bqij,bqj->bqi', D_, E_)
                 affinities = tf.einsum('bqi,bki->bqk', affinities, E_)
                 affinities = affinities / (K_.get_shape().as_list()[-1] ** 0.5)
-
 
                 # with tf.name_scope("prj/event"):
                 #     event_embs = tf.get_variable(
@@ -463,6 +463,7 @@ class BiMAU(MAU):
                 # affinities = tf.einsum('bqe,bkeh->bqkh', D_, M_)
 
             # Activation
+            # outputs = tf.nn.softmax(outputs)  # (h*N, T_q, T_k)
             outputs = tf.nn.softmax(outputs + affinities)  # (h*N, T_q, T_k)
 
             # Weighted sum

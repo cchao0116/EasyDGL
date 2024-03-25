@@ -67,7 +67,10 @@ class EasyDGL(Sequential):
     def __call__(self, features, is_training):
         seqs_ids = features['seqs_i']
         seqs_ts = features['seqs_t'] / self.time_scale
-        seqs_ds = tf.concat([features['seqs_month'] / 12., features['seqs_weekday'] / 7.], axis=-1)
+
+        seqs_month = tf.to_float(features['seqs_month']) / 12.
+        seqs_weekday = tf.to_float(features['seqs_weekday']) / 7.
+        seqs_ds = tf.stack([seqs_month, seqs_weekday], axis=2)
 
         seqs_spans = clip_by_value(seqs_ts[:, 1:] - seqs_ts[:, :-1])
         seqs_spans = tf.concat([seqs_spans[:, :1], seqs_spans], axis=-1)
@@ -84,7 +87,7 @@ class EasyDGL(Sequential):
 
         # event mark encoding
         with tf.variable_scope("encoding/mark"):
-            marks_codes = tf.layers.dense(seqs_marks, self.num_units, use_bias=False)
+            marks_codes = tf.layers.dense(tf.to_float(seqs_marks), self.num_units, use_bias=False)
         seqs_units = tf.concat([seqs_units, posn_codes, marks_codes], axis=-1)
 
         # Dropout
